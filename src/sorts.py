@@ -54,3 +54,5 @@ def _merge(left: List[int], right: List[int]) -> List[int]:
     merged.extend(left[i:])
     merged.extend(right[j:])
     return merged
+
+
