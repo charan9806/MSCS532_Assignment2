@@ -6,65 +6,54 @@ import csv
 import os
 from typing import Callable, List, Dict, Tuple
 
+# These are in a local file named sorts.py
 from sorts import quicksort, mergesort
 
-# -----------------------------
-# Making the lists
-# -----------------------------
+# Dataset Generators
 
 def make_sorted(n: int) -> List[int]:
+    # Best-case scenario for some algos, worst for others (like basic QuickSort)
     return list(range(n))
 
 def make_reverse_sorted(n: int) -> List[int]:
+    # Worst-case scenario usually
     return list(range(n, 0, -1))
 
 def make_random(n: int, seed: int = 42) -> List[int]:
+    # Standard random input. Fixed seed so results are reproducible.
     rng = random.Random(seed)
     return [rng.randint(0, 10**9) for _ in range(n)]
 
-# -----------------------------
-# Measuring stuff
-# -----------------------------
+# Performance Tracking
 
 def measure_time_and_memory(sort_fn: Callable[[List[int]], List[int]], data: List[int]) -> Tuple[float, int]:
-    """
-    Returns:
-      how long it took, and the most memory we used
-    
-    We use a special tool to watch memory usage while the function runs.
-    """
-    # Turn on the memory watcher
+    # Start memory tracing
     tracemalloc.start()
 
-    # Start the stopwatch
+    # Time the function
     start = time.perf_counter()
     out = sort_fn(data)  # sort on a provided list
     end = time.perf_counter()
 
-    # Just a quick sanity check to make sure it actually sorted it correctly.
+    # Validate correctness quickly (optional but helpful)
     if out != sorted(data):
         raise ValueError(f"{sort_fn.__name__} produced incorrect result!")
 
-    # Check what the memory usage peaked at
+    # Capture peak memory
     current, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
 
     return (end - start), peak
 
-# -----------------------------
-# Running the race
-# -----------------------------
+# Benchmark runner
 
 def run_benchmarks(
     sizes: List[int],
     repeats: int = 3,
     out_csv_path: str = "../results/results.csv"
 ) -> None:
-    """
-    Runs the race for Quick Sort and Merge Sort on different kinds of lists.
-    Saves the results in a CSV file so we can look at them later.
-    """
-
+   
+   # Make sure the folder exists so we don't crash on file write
     os.makedirs(os.path.dirname(out_csv_path), exist_ok=True)
 
     algorithms: Dict[str, Callable[[List[int]], List[int]]] = {
@@ -81,11 +70,12 @@ def run_benchmarks(
     rows = []
     for n in sizes:
         for dataset_name, make_fn in datasets.items():
+            # Generate the base data once for this size/type
             base_data = make_fn(n)
 
             for alg_name, alg_fn in algorithms.items():
                 for run in range(1, repeats + 1):
-                    # IMPORTANT: give it a copy so it doesn't mess up the original list for the next run
+                    # IMPORTANT: pass a copy so each run sees the same input
                     data = list(base_data)
 
                     elapsed, peak_mem = measure_time_and_memory(alg_fn, data)
@@ -100,7 +90,7 @@ def run_benchmarks(
                     })
                     print(f"n={n:6d} | {dataset_name:13s} | {alg_name:22s} | run={run} | time={elapsed:.6f}s | mem={peak_mem}")
 
-    # Save all the numbers to a file
+    # Write CSV
     with open(out_csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         writer.writeheader()
@@ -108,44 +98,36 @@ def run_benchmarks(
 
     print(f"\nSaved results to: {out_csv_path}")
 
-# -----------------------------
-# Making pretty charts
-# -----------------------------
+# Plotting and table summary
 
 def summarize_and_plot(
     csv_path: str = "../results/results.csv",
     out_time_plot: str = "../results/time_plot.png",
     out_mem_plot: str = "../results/memory_plot.png"
 ) -> None:
-    """
-    Creates:
-      - a table printed right here
-      - two pictures (plots) of the time and memory usage
-    
-    Uses matplotlib to draw the pictures.
-    """
+
     import pandas as pd
     import matplotlib.pyplot as plt
 
     df = pd.read_csv(csv_path)
 
-    # Group the runs together and take the average
+    # Aggregate mean over runs
     agg = (
         df.groupby(["algorithm", "dataset", "n"], as_index=False)
           .agg(time_sec_mean=("time_sec", "mean"),
                peak_mem_mean=("peak_mem_bytes", "mean"))
     )
 
-    # Save the averaged numbers to a file too, just in case we need them
+    # Save aggregated table for easy copy into report
     agg_out_path = os.path.join(os.path.dirname(csv_path), "results_aggregated.csv")
     agg.to_csv(agg_out_path, index=False)
     print(f"Saved aggregated table to: {agg_out_path}\n")
 
-    # Show a little preview of the data
+    # Print a small table preview
     print("Aggregated Results (mean over runs):")
     print(agg.head(20).to_string(index=False))
 
-    # -------- Time plot --------
+    # Time plot
     plt.figure()
     for (alg, dataset), sub in agg.groupby(["algorithm", "dataset"]):
         # plot each line separately
@@ -158,7 +140,7 @@ def summarize_and_plot(
     plt.tight_layout()
     plt.savefig(out_time_plot, dpi=200)
 
-    # -------- Memory plot --------
+    #Memory plot
     plt.figure()
     for (alg, dataset), sub in agg.groupby(["algorithm", "dataset"]):
         sub_sorted = sub.sort_values("n")
@@ -172,12 +154,11 @@ def summarize_and_plot(
 
     print(f"\nSaved plots:\n- {out_time_plot}\n- {out_mem_plot}")
 
-# -----------------------------
 # Main
-# -----------------------------
 
 if __name__ == "__main__":
-    # Pick some list sizes. Not too big or it takes forever.
+    # Choose sizes that won't blow recursion/time in Python.
+    # You can increase, but if you do, consider using iterative / in-place variants.
     sizes = [200, 500, 1000, 2000, 5000]
 
     run_benchmarks(sizes=sizes, repeats=3, out_csv_path="../results/results.csv")
